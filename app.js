@@ -1,93 +1,115 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const taskForm = document.getElementById('taskForm');
-    const taskTitleInput = document.getElementById('taskTitle');
-    const subjectNameInput = document.getElementById('subjectName');
-    const taskListContainer = document.getElementById('taskList');
-    const errorMsg = document.getElementById('errorMsg');
+let tasks = JSON.parse(localStorage.getItem('atu_tasks')) || [];
+let currentFilter = 'all';
 
-    // Load tasks from localStorage or initialize empty array
-    let tasks = JSON.parse(localStorage.getItem('atu_study_tasks')) || [];
+// DOM Elements
+const taskForm = document.getElementById('task-form');
+const taskTitleInput = document.getElementById('task-title');
+const taskCourseInput = document.getElementById('task-course');
+const taskPriorityInput = document.getElementById('task-priority');
+const taskDateInput = document.getElementById('task-date');
+const taskList = document.getElementById('task-list');
+const emptyMsg = document.getElementById('empty-msg');
+const searchInput = document.getElementById('search-input');
+const clearSearchBtn = document.getElementById('clear-search-btn');
+const filterBtns = document.querySelectorAll('.filter-btn');
+const clearCompletedBtn = document.getElementById('clear-completed-btn');
 
-    function saveAndRender() {
-        localStorage.setItem('atu_study_tasks', JSON.stringify(tasks));
-        renderTasks();
-    }
+// Add Task
+taskForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const newTask = {
+        id: Date.now(),
+        title: taskTitleInput.value.trim(),
+        course: taskCourseInput.value.trim(),
+        priority: taskPriorityInput.value,
+        date: taskDateInput.value,
+        completed: false
+    };
 
-    function renderTasks() {
-        taskListContainer.innerHTML = '';
+    tasks.push(newTask);
+    saveAndRender();
+    taskForm.reset();
+});
 
-        if (tasks.length === 0) {
-            taskListContainer.innerHTML = `<div class="empty-state">No study tasks added yet. Add a task above to get started!</div>`;
-            return;
-        }
+// Render Tasks
+function renderTasks() {
+    taskList.innerHTML = '';
+    const query = searchInput.value.toLowerCase();
 
-        tasks.forEach((task, index) => {
-            const taskItem = document.createElement('div');
-            taskItem.className = `task-item ${task.completed ? 'completed' : ''}`;
+    const filteredTasks = tasks.filter(task => {
+        // Status filter
+        if (currentFilter === 'active' && task.completed) return false;
+        if (currentFilter === 'completed' && !task.completed) return false;
 
-            taskItem.innerHTML = `
-                <div class="task-info">
-                    <input type="checkbox" ${task.completed ? 'checked' : ''} aria-label="Mark task complete" data-index="${index}">
-                    <div class="task-details">
-                        <span class="task-title-text">${escapeHtml(task.title)}</span>
-                        <span class="task-subject-text">${escapeHtml(task.subject || 'General Study')}</span>
+        // Search query filter
+        const matchTitle = task.title.toLowerCase().includes(query);
+        const matchCourse = task.course.toLowerCase().includes(query);
+        const matchPriority = task.priority.toLowerCase().includes(query);
+        return matchTitle || matchCourse || matchPriority;
+    });
+
+    if (filteredTasks.length === 0) {
+        emptyMsg.style.display = 'block';
+    } else {
+        emptyMsg.style.display = 'none';
+        filteredTasks.forEach(task => {
+            const li = document.createElement('li');
+            li.className = 'task-item';
+            li.innerHTML = `
+                <div class="task-info ${task.completed ? 'completed' : ''}">
+                    <input type="checkbox" ${task.completed ? 'checked' : ''} onchange="toggleTask(${task.id})">
+                    <div>
+                        <div class="task-title">${task.title}</div>
+                        <div class="task-meta">${task.course} | ${task.priority} Priority ${task.date ? '| ' + task.date : ''}</div>
                     </div>
                 </div>
-                <button class="delete-btn" data-index="${index}">Delete</button>
+                <button class="delete-btn" onclick="deleteTask(${task.id})">Delete</button>
             `;
-
-            taskListContainer.appendChild(taskItem);
+            taskList.appendChild(li);
         });
     }
+}
 
-    // Prevent XSS security issues with text rendering
-    function escapeHtml(str) {
-        return str.replace(/[&<>'"]/g, 
-            tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
-        );
-    }
+// Save & Render
+function saveAndRender() {
+    localStorage.setItem('atu_tasks', JSON.stringify(tasks));
+    renderTasks();
+}
 
-    // Add task event listener
-    taskForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const title = taskTitleInput.value.trim();
-        const subject = subjectNameInput.value.trim();
+// Toggle Complete
+window.toggleTask = function(id) {
+    tasks = tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
+    saveAndRender();
+};
 
-        if (!title) {
-            errorMsg.textContent = 'Please enter a valid task title before submitting.';
-            taskTitleInput.focus();
-            return;
-        }
+// Delete Task
+window.deleteTask = function(id) {
+    tasks = tasks.filter(t => t.id !== id);
+    saveAndRender();
+};
 
-        errorMsg.textContent = '';
-        
-        tasks.push({
-            title: title,
-            subject: subject || 'General Study',
-            completed: false
-        });
-
-        taskTitleInput.value = '';
-        subjectNameInput.value = '';
-        taskTitleInput.focus();
-
-        saveAndRender();
+// Filter Buttons
+filterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        filterBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentFilter = btn.dataset.filter;
+        renderTasks();
     });
+});
 
-    // Handle checkbox toggle and delete actions via event delegation
-    taskListContainer.addEventListener('click', (e) => {
-        const index = e.target.getAttribute('data-index');
-        if (index === null) return;
+// Clear Completed Tasks
+clearCompletedBtn.addEventListener('click', () => {
+    tasks = tasks.filter(t => !t.completed);
+    saveAndRender();
+});
 
-        if (e.target.type === 'checkbox') {
-            tasks[index].completed = e.target.checked;
-            saveAndRender();
-        } else if (e.target.classList.contains('delete-btn')) {
-            tasks.splice(index, 1);
-            saveAndRender();
-        }
-    });
-
-    // Initial render on page load
+// Search functionality
+searchInput.addEventListener('input', renderTasks);
+clearSearchBtn.addEventListener('click', () => {
+    searchInput.value = '';
     renderTasks();
 });
+
+// Initial Render
+renderTasks();
